@@ -7,40 +7,73 @@ import XCTest
 import CodabilityMacros
 
 let testMacros: [String: Macro.Type] = [
-    "stringify": StringifyMacro.self,
+    "Codability": CodabilityMacro.self
 ]
 #endif
 
 final class CodabilityTests: XCTestCase {
     func testMacro() throws {
-        #if canImport(CodabilityMacros)
+#if canImport(CodabilityMacros)
         assertMacroExpansion(
             """
-            #stringify(a + b)
+            @Codability
+            struct Example {
+                var foo: String
+                var _bar: Int
+                var _bar2: Int
+                var bar: Int {
+                    @storageRestrictions(initializes: _bar, _bar2)
+                    init(value) { _bar = value; _bar2 = value }
+                    get { _bar }
+                    set { _bar = newValue }
+                }
+                var baz = "hello"
+            }
             """,
             expandedSource: """
-            (a + b, "a + b")
+            struct Example {
+                var foo: String
+                var _bar: Int
+                var _bar2: Int
+                var bar: Int {
+                    @storageRestrictions(initializes: _bar, _bar2)
+                    init(value) { _bar = value; _bar2 = value }
+                    get { _bar }
+                    set { _bar = newValue }
+                }
+                var baz = "hello"
+
+                init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    func decode<T: Decodable>(key: CodingKeys) throws -> T {
+                        try container.decode(T.self, forKey: key)
+                    }
+                    self.foo = try decode(key: .foo)
+                    self.bar = try decode(key: .bar)
+                    self.baz = try decode(key: .baz)
+                }
+
+                func encode(to encoder: Encoder) throws {
+                    var container = encoder.container(keyedBy: CodingKeys.self)
+                    try container.encode(self.foo, forKey: .foo)
+                    try container.encode(self.bar, forKey: .bar)
+                    try container.encode(self.baz, forKey: .baz)
+                }
+
+                enum CodingKeys: String, CodingKey {
+                    case foo
+                    case bar
+                    case baz
+                }
+            }
+
+            extension Example: Codable {
+            }
             """,
             macros: testMacros
         )
-        #else
+#else
         throw XCTSkip("macros are only supported when running tests for the host platform")
-        #endif
-    }
-
-    func testMacroWithStringLiteral() throws {
-        #if canImport(CodabilityMacros)
-        assertMacroExpansion(
-            #"""
-            #stringify("Hello, \(name)")
-            """#,
-            expandedSource: #"""
-            ("Hello, \(name)", #""Hello, \(name)""#)
-            """#,
-            macros: testMacros
-        )
-        #else
-        throw XCTSkip("macros are only supported when running tests for the host platform")
-        #endif
+#endif
     }
 }
